@@ -23,7 +23,7 @@ from stl import mesh
 #from digi.xbee.devices import XBeeDevice
 import serial
 import threading
-
+import os
 
 class XbeeDriverSim():
     def __init__(self, gui):
@@ -34,8 +34,10 @@ class XbeeDriverSim():
         self._unread = False
         self.received_count = 0
         self.last_sent_command = ""
-
-        with open("C:\\Users\\Luke\\Documents\\Projects\\CanSat\\Ground Station\\sim_data.csv", "r") as file:
+        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
+        rel_path = "data/sim_data.csv"
+        abs_file_path = os.path.join(script_dir, rel_path)
+        with open(abs_file_path, "r") as file:
             self.msgs = file.readlines()
         self.c = 0
 
@@ -78,7 +80,7 @@ class XbeeDriverSim():
         self.last_sent_command = cmd
 
 class XbeeDriver():
-    def __init__(self, gui, COM="COM11", BAUD=115200):
+    def __init__(self, gui, COM="/dev/ttyUSB0", BAUD=115200):
 
         self.filename = datetime.now().strftime("%H-%M-%S_%d-%m-%Y") + '.csv'
 
@@ -116,7 +118,11 @@ class XbeeDriver():
             with self._xbee_lock:
                 latest_char = self.ser.read().decode()
 
-            with open("C:\\Users\\Luke\\Documents\\Projects\\CanSat\\Ground Station\\logs\\" + self.filename, 'a') as file:
+
+            script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
+            rel_path = "logs/"+self.filename
+            abs_file_path = os.path.join(script_dir, rel_path)
+            with open(abs_file_path, "a") as file:
                 file.write(latest_char)
     
             if latest_char == "\n":
@@ -151,7 +157,10 @@ class XbeeDriver():
 
 
     def simp_handler(self):
-        with open("C:\\Users\\Luke\\Documents\\Projects\\CanSat\\Ground Station\\sim_data.csv", "r") as file:
+        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
+        rel_path = "data/sim_data.csv"
+        abs_file_path = os.path.join(script_dir, rel_path)
+        with open(abs_file_path, "r") as file:
             all_data = file.readlines()
 
         while True:
@@ -216,8 +225,11 @@ class Graphic3d(GraphicsLayoutWidget):
     def __init__(self, file):
         super().__init__()
         self.setBackground("w")
+        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
+        rel_path = "mesh/"+file
+        abs_file_path = os.path.join(script_dir, rel_path)
 
-        stl_mesh = mesh.Mesh.from_file('C:\\Users\\Luke\\Documents\\Projects\\CanSat\\Ground Station\\3d_files\\' + file) #Eiffel_tower_sample.STL
+        stl_mesh = mesh.Mesh.from_file(abs_file_path) #Eiffel_tower_sample.STL
         points = stl_mesh.points.reshape(-1, 3)
         faces = np.arange(points.shape[0]).reshape(-1, 3)
         mesh_data = MeshData(vertexes=points, faces=faces)
@@ -687,7 +699,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriver(self, "COM11", 9600)
+        self.xbee_driver = XbeeDriver(self, "/dev/ttyUSB0", 9600)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
