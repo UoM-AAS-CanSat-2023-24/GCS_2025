@@ -1,4 +1,4 @@
-import sys, time
+import sys, os, time, serial, threading
 from datetime import datetime
 import numpy as np
 
@@ -12,32 +12,29 @@ from PyQt6.QtWidgets import (
     QLabel,
     QVBoxLayout,
     QHBoxLayout,
-    QGridLayout,
-    
-    QFrame)
+    QGridLayout)
 
 from pyqtgraph.opengl import GLViewWidget, MeshData, GLMeshItem
 from pyqtgraph import GraphicsLayoutWidget, PlotWidget, ViewBox, AxisItem, PlotCurveItem, mkPen
 from stl import mesh
 
-#from digi.xbee.devices import XBeeDevice
-import serial
-import threading
-import os
+XBEE_COM_PORT = "/dev/ttyUSB0"
+SIM_DATA_FILE = "sim_data.csv"
+MESH_FILE = "Container_old.stl"
+
+SCRIPT_DIR = os.path.dirname(__file__)
+
 
 class XbeeDriverSim():
     def __init__(self, gui):
-
         self.gui = gui
 
         self._msg = ""
         self._unread = False
         self.received_count = 0
         self.last_sent_command = ""
-        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
-        rel_path = "data/sim_data.csv"
-        abs_file_path = os.path.join(script_dir, rel_path)
-        with open(abs_file_path, "r") as file:
+
+        with open(os.path.join(SCRIPT_DIR, "sim_data", SIM_DATA_FILE), "r") as file:
             self.msgs = file.readlines()
         self.c = 0
 
@@ -45,8 +42,6 @@ class XbeeDriverSim():
         timer = QTimer(gui)
         timer.timeout.connect(self.new_data)
         timer.start(1000)
-
-
 
     def new_data(self):
         if self._unread:
@@ -80,9 +75,10 @@ class XbeeDriverSim():
         self.last_sent_command = cmd
 
 class XbeeDriver():
-    def __init__(self, gui, COM="/dev/ttyUSB0", BAUD=115200):
+    def __init__(self, gui, COM=XBEE_COM_PORT, BAUD=115200):
 
         self.filename = datetime.now().strftime("%H-%M-%S_%d-%m-%Y") + '.csv'
+        #self.abs_filename = os.path.join(SCRIPT_DIR, "logs", self.filename)
 
         self.gui = gui
         self.ser = serial.Serial(COM, BAUD)
@@ -90,6 +86,7 @@ class XbeeDriver():
 
         self.xbee_thread = threading.Thread(target=self.xbee_handler, daemon=True)
         self._xbee_lock = threading.Lock()
+        self._kill_flag = False
         self.xbee_thread.start()
 
         self.simp_thread = threading.Thread(target=self.simp_handler, daemon=True)
@@ -110,57 +107,59 @@ class XbeeDriver():
 
     def close(self):
         self.stop_simp()
+        with self._xbee_lock: self._kill_flag = True
         self.ser.close()
 
     def xbee_handler(self): #reads from xbee and writes to xbee
         latest_msg = ''
         while True:
-            with self._xbee_lock:
-                latest_char = self.ser.read().decode()
-
-
-            script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
-            rel_path = "logs/"+self.filename
-            abs_file_path = os.path.join(script_dir, rel_path)
-            with open(abs_file_path, "a") as file:
-                file.write(latest_char)
-    
-            if latest_char == "\n":
+            try:
                 with self._xbee_lock:
-                    if self._unread:
-                        print("xbee_handler: MSG OVERFLOW, data lost")
-                    self._msg = latest_msg.split(',')
+                    if self._kill_flag: 
+                        break
+                    latest_char = self.ser.read().decode()
+                with open(os.path.join(SCRIPT_DIR, "logs", self.filename), 'a') as file:
+                    file.write(latest_char)
+        
+                if latest_char == "\n":
+                    with self._xbee_lock:
+                        if self._unread:
+                            print("xbee_handler: MSG OVERFLOW, data lost")
+                        print("xbee handler: got packet:")
+                        self._msg = latest_msg.split(',')
+                        print(self._msg)
 
-                    end_of_echo = self._msg.index("") #remove splits in echo (every command has commas)
-                    self._msg = self._msg[:24] + [','.join(self._msg[24:end_of_echo])] + self._msg[end_of_echo:]
+                        end_of_echo = self._msg.index('') #remove splits in echo (every command has commas)
+                        self._msg = self._msg[:24] + [','.join(self._msg[24:end_of_echo])] + self._msg[end_of_echo:]
+                        print(self._msg)
+                        print(len(self._msg))
+                        latest_msg = ''
+                        print("xbee_handler: got new msg")
+                        self._unread = True
+                        self._recv_count += 1
 
-                    latest_msg = ''
-                    print("xbee_handler: got new msg")
-                    self._unread = True
-                    self._recv_count += 1
+                        if self._toSendSimp != '':
+                            print("xbee handler: allowing single simp send")
+                            self.ser.write(self._toSendSimp.encode())
+                            self.last_sent_command = ('\n\n' + self._toSendSimp).split('\n')[-2]
+                            self._toSendSimp = ''
+                            print('done')
+                else:
+                    latest_msg += latest_char
 
-                    if self._toSendSimp != '':
-                        print("xbee handler: allowing single simp send")
-                        self.ser.write(self._toSendSimp.encode())
-                        self.last_sent_command = ('\n\n' + self._toSendSimp).split('\n')[-2]
-                        self._toSendSimp = ''
-                        print('done')
-            else:
-                latest_msg += latest_char
-
-            with self._xbee_lock:
-                if self._toSend != '':
-                    print("xbee_handler sending: ", self._toSend)
-                    self.ser.write(self._toSend.encode())
-                    self.last_sent_command = ('\n\n' + self._toSend).split('\n')[-2]
-                    self._toSend = ''
+                with self._xbee_lock:
+                    if self._toSend != '':
+                        print("xbee_handler sending: ", self._toSend)
+                        self.ser.write(self._toSend.encode())
+                        self.last_sent_command = ('\n\n' + self._toSend).split('\n')[-2]
+                        self._toSend = ''
+            except Exception as e:
+                print("xbee handler: ERROR")
+                print(str(e))
 
 
     def simp_handler(self):
-        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
-        rel_path = "data/sim_data.csv"
-        abs_file_path = os.path.join(script_dir, rel_path)
-        with open(abs_file_path, "r") as file:
+        with open(os.path.join(SCRIPT_DIR, "sim_data", SIM_DATA_FILE), "r") as file:
             all_data = file.readlines()
 
         while True:
@@ -225,11 +224,7 @@ class Graphic3d(GraphicsLayoutWidget):
     def __init__(self, file):
         super().__init__()
         self.setBackground("w")
-        script_dir = os.path.dirname(__file__) #<-- absolute dir the script is in
-        rel_path = "mesh/"+file
-        abs_file_path = os.path.join(script_dir, rel_path)
-
-        stl_mesh = mesh.Mesh.from_file(abs_file_path) #Eiffel_tower_sample.STL
+        stl_mesh = mesh.Mesh.from_file(os.path.join(SCRIPT_DIR, "mesh", file)) #Eiffel_tower_sample.STL
         points = stl_mesh.points.reshape(-1, 3)
         faces = np.arange(points.shape[0]).reshape(-1, 3)
         mesh_data = MeshData(vertexes=points, faces=faces)
@@ -397,10 +392,12 @@ class GraphWidget(GraphicsLayoutWidget):
                 min = -10
                 t_offset = time.time()
 
+
         else: #10s before launch to now
             max = time.time() - self.GUI.launch_time
             min = -10
             t_offset = self.GUI.launch_time
+    
 
         self.autorange_line.setData([min, min+0.0000001, max], [0,1,1])
 
@@ -663,17 +660,10 @@ class TXButton(QPushButton):
         super().__init__(params[0])
         self.command = params[1]
         self.GUI = GUI
-
-        #self.clicked.connect(self.GUI.xbee_driver.send_cmd)
-        self.clicked.connect(lambda : self.GUI.xbee_driver.send_msg(self.command))
         self.setFixedHeight(90)
 
-    """def send_msg(self):
-        print("sending", self.command)
-        self.GUI.variables["CMD Echo"].setStatus("Warn")
-        self.GUI.variables["CMD Echo Line"].setStatus("Warn")"""
-
-
+        if self.command != "CLEAR GRAPH":
+            self.clicked.connect(lambda : self.GUI.xbee_driver.send_msg(self.command))
 
 class ButtonWindow(QWidget):
     def __init__(self, buttons):
@@ -694,12 +684,12 @@ class ButtonWindow(QWidget):
 
 
 
-# Subclass QMainWindow to customize your application's main window
+# Subclass QMainWindow to customize GCS main window
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriver(self, "/dev/ttyUSB0", 9600)
+        self.xbee_driver = XbeeDriver(self, "COM12", 9600)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
@@ -811,6 +801,7 @@ class MainWindow(QMainWindow):
 
         self.buttons["Simulation\nActivate"].clicked.connect(self.xbee_driver.start_simp)
         self.buttons["Simulation\nDisable"].clicked.connect(self.xbee_driver.stop_simp)
+        self.buttons["Clear\n Graph"].clicked.connect(self.clear_graph)
 
         comms_data = [self.variables["Packet Count"],
                       self.variables["Received Count"],
@@ -919,7 +910,7 @@ class MainWindow(QMainWindow):
         graph_panel_layout = QVBoxLayout()
         graph_panel_layout.setContentsMargins(0,0,0,0)
 
-        self.graph3d = Graphic3d("Container_old.stl")
+        self.graph3d = Graphic3d(MESH_FILE)
         graph_panel_layout.addWidget(self.graph3d)
         self.graph_1 = GraphWidget(self)
         graph_panel_layout.addWidget(self.graph_1)
@@ -967,6 +958,10 @@ class MainWindow(QMainWindow):
         p.setColor(self.backgroundRole(), color)
         self.setPalette(p)
 
+    def clear_graph(self):
+        for var in self.variables:
+            self.variables[var].history = []
+        self.start_time = time.time()
 
     def update(self):
 
@@ -990,7 +985,7 @@ class MainWindow(QMainWindow):
 
         # LOS detector
         if self.variables["State"] != "Launch Pad" or True:
-            if time.time() - self.last_msg_time > 1.050:
+            if time.time() - self.last_msg_time > 1.20:
                 los_time = time.time() - self.last_msg_time
                 self.comms_window.setStatus("Error")
                 los_time_str = time.strftime("%M:%S", time.gmtime(los_time))
@@ -1000,54 +995,60 @@ class MainWindow(QMainWindow):
 
         if self.xbee_driver.is_unread():
             new_msg = self.xbee_driver.get_msg()
-            print(new_msg)
-            self.data = new_msg
-
             self.last_msg_time = time.time()
-            self.comms_window.setStatus("OK")
-            self.comms_window.state.setText("")
+            print(new_msg)
 
-            if self.variables["State"].getData() == "Launch Pad":
-                self.launch_packet = int(self.data[2])
-                self.launch_time = time.time()
+            if len(new_msg) != 31: #expects 32 entries (blank after command included)
+                print("MALFORMED PACKET: expected 30 entries, got " + str(len(new_msg)+1))
+                print(new_msg)
+                self.comms_window.setStatus("Warn")
+                self.comms_window.state.setText("MAL")
+            else:
+                self.data = new_msg
+                self.comms_window.setStatus("OK")
+                self.comms_window.state.setText("")
 
-            self.variables["Mission Time"].setData(self.data[1])
-            self.variables["Packet Count"].setData(self.data[2])
-            self.variables["Received Count"].setData(str(self.xbee_driver.get_recv_count()))
-            self.variables["Mode"].setData(self.data[3])
-            self.variables["State"].setData(self.data[4])
-            self.variables["Altitude"].setData(self.data[5])
-            self.variables["Altitude 2"].setData(self.data[5])
-            self.variables["Temperature"].setData(self.data[6])
-            self.variables["Pressure"].setData(self.data[7])
-            self.variables["Bus Voltage"].setData(self.data[8])
+                if self.variables["State"].getData() == "Launch Pad": #keeps t0 in the future
+                    self.launch_packet = int(self.data[2])
+                    self.launch_time = time.time()
 
-            self.variables["GYRO R"].setData(self.data[9])
-            self.variables["GYRO P"].setData(self.data[10])
-            self.variables["GYRO Y"].setData(self.data[11])
-            self.variables["ACCEL R"].setData(self.data[12])
-            self.variables["ACCEL P"].setData(self.data[13])
-            self.variables["ACCEL Y"].setData(self.data[14])
-            self.variables["MAG R"].setData(self.data[15])
-            self.variables["MAG P"].setData(self.data[16])
-            self.variables["MAG Y"].setData(self.data[17])
+                self.variables["Mission Time"].setData(self.data[1])
+                self.variables["Packet Count"].setData(self.data[2])
+                self.variables["Received Count"].setData(str(self.xbee_driver.get_recv_count()))
+                self.variables["Mode"].setData(self.data[3])
+                self.variables["State"].setData(self.data[4])
+                self.variables["Altitude"].setData(self.data[5])
+                self.variables["Altitude 2"].setData(self.data[5])
+                self.variables["Temperature"].setData(self.data[6])
+                self.variables["Pressure"].setData(self.data[7])
+                self.variables["Bus Voltage"].setData(self.data[8])
 
-            self.variables["Autogyro Rate"].setData(self.data[18])
+                self.variables["GYRO R"].setData(self.data[9])
+                self.variables["GYRO P"].setData(self.data[10])
+                self.variables["GYRO Y"].setData(self.data[11])
+                self.variables["ACCEL R"].setData(self.data[12])
+                self.variables["ACCEL P"].setData(self.data[13])
+                self.variables["ACCEL Y"].setData(self.data[14])
+                self.variables["MAG R"].setData(self.data[15])
+                self.variables["MAG P"].setData(self.data[16])
+                self.variables["MAG Y"].setData(self.data[17])
 
-            self.variables["GPS Time"].setData(self.data[19])
-            self.variables["GPS Altitude"].setData(self.data[20])
-            self.variables["GPS Lat"].setData(self.data[21])
-            self.variables["GPS Long"].setData(self.data[22])
-            self.variables["GPS Sats"].setData(self.data[23])
-                                               
-            self.variables["CMD Echo Line"].setData(self.data[24])
+                self.variables["Autogyro Rate"].setData(self.data[18])
 
-            self.variables["Substate"].setData(self.data[26])
-            self.variables["Descent Rate"].setData(self.data[27])
-            self.variables["Main SOC"].setData(self.data[28])
-            self.variables["Bus Current"].setData(self.data[29])
-            self.variables["Bus Power"].setData(self.data[30])
-            self.variables["Release Mechanism"].setData(self.data[31])
+                self.variables["GPS Time"].setData(self.data[19])
+                self.variables["GPS Altitude"].setData(self.data[20])
+                self.variables["GPS Lat"].setData(self.data[21])
+                self.variables["GPS Long"].setData(self.data[22])
+                self.variables["GPS Sats"].setData(self.data[23])
+                                                
+                self.variables["CMD Echo Line"].setData(self.data[24])
+
+                self.variables["Substate"].setData(self.data[26])
+                #self.variables["Descent Rate"].setData(self.data[27])
+                self.variables["Main SOC"].setData(self.data[27])
+                self.variables["Bus Current"].setData(self.data[28])
+                self.variables["Bus Power"].setData(self.data[29])
+                self.variables["Release Mechanism"].setData(self.data[30])
             
 
 
@@ -1058,8 +1059,11 @@ class MainWindow(QMainWindow):
             t = [i for i in range(int(self.data[2])-self.launch_packet-len(self.variables["Altitude"].history), int(self.data[2])-self.launch_packet)]
             #self.graph_1.setData(t, self.variables["Altitude"], self.variables["Pressure"], None)
             self.graph_1.setDataSmart("Altitude", "Pressure", None)
+            #self.graph_1.setDataSmart("GYRO R", "GYRO P", "GYRO Y")
+            #self.graph_1.setDataSmart(None, "Pressure", None)
             #self.graph_2.setDataSmart("Autogyro Rate", "Descent Rate", "Temperature")
-            self.graph_2.setDataSmart(None, None, "Temperature")
+            self.graph_2.setDataSmart("Temperature", None, None)
+            #self.graph_2.setDataSmart("ACCEL R", "ACCEL P", "ACCEL Y")
 
 
 
