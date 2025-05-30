@@ -34,7 +34,7 @@ class XbeeDriverSim():
         self.received_count = 0
         self.last_sent_command = ""
 
-        with open(os.path.join(SCRIPT_DIR, "sim_data", SIM_DATA_FILE), "r") as file:
+        with open(os.path.join(SCRIPT_DIR, "data", SIM_DATA_FILE), "r") as file:
             self.msgs = file.readlines()
         self.c = 0
 
@@ -159,7 +159,7 @@ class XbeeDriver():
 
 
     def simp_handler(self):
-        with open(os.path.join(SCRIPT_DIR, "sim_data", SIM_DATA_FILE), "r") as file:
+        with open(os.path.join(SCRIPT_DIR, "data", SIM_DATA_FILE), "r") as file:
             all_data = file.readlines()
 
         while True:
