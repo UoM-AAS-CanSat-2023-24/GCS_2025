@@ -18,7 +18,7 @@ from pyqtgraph.opengl import GLViewWidget, MeshData, GLMeshItem
 from pyqtgraph import GraphicsLayoutWidget, PlotWidget, ViewBox, AxisItem, PlotCurveItem, mkPen
 from stl import mesh
 
-XBEE_COM_PORT = "COM12"
+XBEE_COM_PORT = "/dev/ttyUSB0"
 SIM_DATA_FILE = "sim_data.csv"
 MESH_FILE = "Container_old.stl"
 
