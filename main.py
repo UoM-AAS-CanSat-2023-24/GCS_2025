@@ -689,14 +689,14 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriver(self, "COM12", 9600)
+        self.xbee_driver = XbeeDriver(self, XBEE_COM_PORT, 9600)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
 
         self.setWindowTitle("CANSAT Ground Station")
 
-        self.status_colors = {"LAUNCH PAD":     QColor(226, 135,  67, 255),
+        self.status_colors = {"LAUNCH_PAD":     QColor(226, 135,  67, 255),
                               "ASCENT":         QColor(255, 255,   0, 255),
                               "APOGEE":         QColor(255,   0,   0, 255),
                               "DESCENT":        QColor(100, 100, 100, 255),
@@ -936,7 +936,7 @@ class MainWindow(QMainWindow):
         widget.setLayout(big_layout)
         #left_panel.setStyleSheet("QWidget{background-color: blue;}")
         self.setAutoFillBackground(True)
-        self.setStatus("LAUNCH PAD")
+        self.setStatus("LAUNCH_PAD")
         #widget.setFixedWidth(300)
         # Set the central widget of the Window.
         self.setCentralWidget(widget)
@@ -969,7 +969,7 @@ class MainWindow(QMainWindow):
 
         # disable buttons while flying
         for i in self.only_on_ground:
-            self.buttons[i].setEnabled(self.variables["State"].getData() == "Launch Pad")
+            self.buttons[i].setEnabled(self.variables["State"].getData() == "LAUNCH_PAD")
 
         if self.variables["CMD Echo Line"].getData() == self.xbee_driver.last_sent_command:
             self.variables["CMD Echo"].setStatus("OK")
