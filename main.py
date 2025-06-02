@@ -18,7 +18,7 @@ from pyqtgraph.opengl import GLViewWidget, MeshData, GLMeshItem
 from pyqtgraph import GraphicsLayoutWidget, PlotWidget, ViewBox, AxisItem, PlotCurveItem, mkPen
 from stl import mesh
 
-XBEE_COM_PORT = "/dev/ttyUSB0"
+XBEE_COM_PORT = "COM12"
 SIM_DATA_FILE = "sim_data.csv"
 MESH_FILE = "Container_old.stl"
 
@@ -209,9 +209,15 @@ class XbeeDriver():
         return x
     
     def send_msg(self, msg):
+        if "<UTC TIME>" in msg: #replace <UTC TIME> with HH:MM:SS timestamp
+            print("Replacing ", msg)
+            start = msg.find("<UTC TIME>")
+            end = msg[start:].find(">") + start + 1
+            msg = msg[:start] + datetime.now().strftime("%H:%M:%S") + msg[end:]
+            print("with", msg)
+
         with self._xbee_lock:
                 self._toSend += msg
-        #self.last_sent_command = msg
         return True
     
     def send_simp_msg(self, msg):
@@ -968,8 +974,8 @@ class MainWindow(QMainWindow):
         if self.start_time == -1: self.start_time = time.time()
 
         # disable buttons while flying
-        for i in self.only_on_ground:
-            self.buttons[i].setEnabled(self.variables["State"].getData() == "LAUNCH_PAD")
+        #for i in self.only_on_ground:
+         #   self.buttons[i].setEnabled(self.variables["State"].getData() == "LAUNCH_PAD")
 
         if self.variables["CMD Echo Line"].getData() == self.xbee_driver.last_sent_command:
             self.variables["CMD Echo"].setStatus("OK")
