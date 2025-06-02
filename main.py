@@ -388,7 +388,7 @@ class GraphWidget(GraphicsLayoutWidget):
 
     def setDataSmart(self, variable_1, variable_2, variable_3):
 
-        if self.GUI.variables["State"].getData() == "Launch Pad": #All Data with t=0 at this instant ~ time.time()
+        if self.GUI.variables["State"].getData() == "LAUNCH_PAD": #All Data with t=0 at this instant ~ time.time()
             if self.GUI.variables["Substate"].getData() == "Disarmed":
                 max = 0
                 min = self.GUI.start_time - time.time()
@@ -695,7 +695,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriver(self, XBEE_COM_PORT, 9600)
+        self.xbee_driver = XbeeDriver(self, XBEE_COM_PORT, 115200)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
@@ -990,7 +990,7 @@ class MainWindow(QMainWindow):
 
 
         # LOS detector
-        if self.variables["State"] != "Launch Pad" or True:
+        if self.variables["State"] != "LAUNCH_PAD" or True:
             if time.time() - self.last_msg_time > 1.20:
                 los_time = time.time() - self.last_msg_time
                 self.comms_window.setStatus("Error")
@@ -1014,7 +1014,7 @@ class MainWindow(QMainWindow):
                 self.comms_window.setStatus("OK")
                 self.comms_window.state.setText("")
 
-                if self.variables["State"].getData() == "Launch Pad": #keeps t0 in the future
+                if self.variables["State"].getData() == "LAUNCH_PAD": #keeps t0 in the future
                     self.launch_packet = int(self.data[2])
                     self.launch_time = time.time()
 
