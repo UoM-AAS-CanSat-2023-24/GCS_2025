@@ -18,7 +18,7 @@ from pyqtgraph.opengl import GLViewWidget, MeshData, GLMeshItem
 from pyqtgraph import GraphicsLayoutWidget, PlotWidget, ViewBox, AxisItem, PlotCurveItem, mkPen
 from stl import mesh
 
-XBEE_COM_PORT = "/dev/ttyUSB0"
+XBEE_COM_PORT = "COM11" #"/dev/ttyUSB0"
 SIM_DATA_FILE = "sim_data.csv"
 MESH_FILE = "Container_old.stl"
 
@@ -39,9 +39,12 @@ class XbeeDriverSim():
         self.c = 0
 
         #simulated packet 
-        timer = QTimer(gui)
-        timer.timeout.connect(self.new_data)
-        timer.start(1000)
+        self.timer = QTimer(gui)
+        self.timer.timeout.connect(self.new_data)
+        self.timer.start(1000)
+
+    def close(self):
+        self.timer.stop()
 
     def new_data(self):
         if self._unread:
@@ -59,10 +62,17 @@ class XbeeDriverSim():
         self.c += 1
         self._unread = True
 
-    def get_latest_msg(self):
+    def get_msg(self):
         self._unread = False
         return self._msg
 
+    def start_simp(self):
+        print("SIMULATED XBEE: start simp called")
+        return 0
+    
+    def stop_simp(self):
+        print("SIMULATED XBEE: stop simp called")
+        return 0
 
     def is_unread(self):
         return self._unread
@@ -126,8 +136,8 @@ class XbeeDriver():
                         if self._unread:
                             print("xbee_handler: MSG OVERFLOW, data lost")
                         print("xbee handler: got packet:")
+                        print(latest_msg)
                         self._msg = latest_msg.split(',')
-                        print(self._msg)
 
                         end_of_echo = self._msg.index('') #remove splits in echo (every command has commas)
                         self._msg = self._msg[:24] + [','.join(self._msg[24:end_of_echo])] + self._msg[end_of_echo:]
@@ -156,7 +166,6 @@ class XbeeDriver():
             except Exception as e:
                 print("xbee handler: ERROR")
                 print(str(e))
-
 
     def simp_handler(self):
         with open(os.path.join(SCRIPT_DIR, "data", SIM_DATA_FILE), "r") as file:
@@ -389,7 +398,7 @@ class GraphWidget(GraphicsLayoutWidget):
     def setDataSmart(self, variable_1, variable_2, variable_3):
 
         if self.GUI.variables["State"].getData() == "LAUNCH_PAD": #All Data with t=0 at this instant ~ time.time()
-            if self.GUI.variables["Substate"].getData() == "Disarmed":
+            if self.GUI.variables["Substate"].getData() == "DISARMED":
                 max = 0
                 min = self.GUI.start_time - time.time()
                 t_offset = time.time()
@@ -695,7 +704,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriver(self, XBEE_COM_PORT, 115200)
+        self.xbee_driver = XbeeDriverSim(self) #XbeeDriver(self, XBEE_COM_PORT, 115200)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
