@@ -1,3 +1,8 @@
+# 2025 GCS
+# Written by :  Luke Shailer 
+#               github - BTSC10
+#               btsc@mail.com
+
 import sys, os, time, serial, threading
 from datetime import datetime
 import numpy as np
@@ -22,10 +27,10 @@ XBEE_COM_PORT = "COM11" #"/dev/ttyUSB0"
 SIM_DATA_FILE = "sim_data.csv"
 MESH_FILE = "Container_old.stl"
 
-SCRIPT_DIR = os.path.dirname(__file__)
+SCRIPT_DIR = os.path.dirname(__file__)  #stores path of main.py so all paths can be defined as relative
 
 
-class XbeeDriverSim():
+class XbeeDriverSim(): #class that can replace XbeeDriver and inject simulated data
     def __init__(self, gui):
         self.gui = gui
 
@@ -88,7 +93,6 @@ class XbeeDriver():
     def __init__(self, gui, COM=XBEE_COM_PORT, BAUD=115200):
 
         self.filename = datetime.now().strftime("%H-%M-%S_%d-%m-%Y") + '.csv'
-        #self.abs_filename = os.path.join(SCRIPT_DIR, "logs", self.filename)
 
         self.gui = gui
         self.ser = serial.Serial(COM, BAUD)
@@ -121,7 +125,7 @@ class XbeeDriver():
         self.ser.close()
 
     def xbee_handler(self): #reads from xbee and writes to xbee
-        latest_msg = ''
+        latest_msg = '' #buffer for incomming msg
         while True:
             try:
                 with self._xbee_lock:
@@ -131,7 +135,7 @@ class XbeeDriver():
                 with open(os.path.join(SCRIPT_DIR, "logs", self.filename), 'a') as file:
                     file.write(latest_char)
         
-                if latest_char == "\n":
+                if latest_char == "\n": #signifies end of current msg
                     with self._xbee_lock:
                         if self._unread:
                             print("xbee_handler: MSG OVERFLOW, data lost")
@@ -148,14 +152,14 @@ class XbeeDriver():
                         self._unread = True
                         self._recv_count += 1
 
-                        if self._toSendSimp != '':
+                        if self._toSendSimp != '': #if there is a simp msg to send
                             print("xbee handler: allowing single simp send")
-                            self.ser.write(self._toSendSimp.encode())
+                            self.ser.write(self._toSendSimp.encode()) #send simp msg to xbee
                             self.last_sent_command = ('\n\n' + self._toSendSimp).split('\n')[-2]
                             self._toSendSimp = ''
                             print('done')
                 else:
-                    latest_msg += latest_char
+                    latest_msg += latest_char #add recieved char to msg buffer
 
                 with self._xbee_lock:
                     if self._toSend != '':
@@ -167,7 +171,7 @@ class XbeeDriver():
                 print("xbee handler: ERROR")
                 print(str(e))
 
-    def simp_handler(self):
+    def simp_handler(self): #this thread handles reading from a simulated data file, generates SIMP commands, and makes them available to the xbee handler at self._toSend
         with open(os.path.join(SCRIPT_DIR, "data", SIM_DATA_FILE), "r") as file:
             all_data = file.readlines()
 
@@ -184,9 +188,8 @@ class XbeeDriver():
                     self.simp_c += 1
 
                     simp_timer = time.time()
-                    while time.time() - simp_timer < 1:
+                    while time.time() - simp_timer < 1: #this whole simp handler thing is super messy. I would rework all of this. I was having a weird issue where this simp handler thread would never halt or go busy so the main thread never ran and didnt realise the problem untill id come up with whatever this hell is.
                         time.sleep(0.1)
-            #print("SimP handler: Terminating")
 
     def start_simp(self):
         print("STARTING SIMP")
@@ -232,11 +235,10 @@ class XbeeDriver():
     def send_simp_msg(self, msg):
         with self._xbee_lock:
                 self._toSendSimp = msg
-        #self.last_sent_command = msg
         return True
 
-class Graphic3d(GraphicsLayoutWidget):
-    def __init__(self, file):
+class Graphic3d(GraphicsLayoutWidget): #widget to display a 3d STL file
+    def __init__(self, file): #file: path to stl file in mesh/
         super().__init__()
         self.setBackground("w")
         stl_mesh = mesh.Mesh.from_file(os.path.join(SCRIPT_DIR, "mesh", file)) #Eiffel_tower_sample.STL
@@ -255,7 +257,7 @@ class Graphic3d(GraphicsLayoutWidget):
         #self.setFixedWidth(700)
         self.setFixedHeight(300)
 
-class GraphWidget(GraphicsLayoutWidget):
+class GraphWidget(GraphicsLayoutWidget): #widget to display up to 3 line graphs on seperate axes
     def __init__(self, GUI):
         super().__init__()
         self.GUI = GUI
@@ -414,7 +416,7 @@ class GraphWidget(GraphicsLayoutWidget):
             t_offset = self.GUI.launch_time
     
 
-        self.autorange_line.setData([min, min+0.0000001, max], [0,1,1])
+        self.autorange_line.setData([min, min+0.0000001, max], [0,1,1]) #this is an invisible line used to set the autoscale range of the graph
 
 
         
@@ -467,7 +469,7 @@ class GraphWidget(GraphicsLayoutWidget):
         if variable.unit.text() != "": label += " - " + variable.unit.text()
         return label
 
-class variable_line(QWidget):
+class variable_line(QWidget): #widget to display a single variable name, value, and unit
     def __init__(self, name, unit, number_check):
         super().__init__()
 
@@ -527,7 +529,7 @@ class variable_line(QWidget):
     def getData(self):
         return self.data.text()
 
-class LargeLabel(QWidget):
+class LargeLabel(QWidget): #widget to display a large string (used to display state)
     def __init__(self, text):
         super().__init__()
 
@@ -564,7 +566,7 @@ class LargeLabel(QWidget):
     def getData(self):
         return self.data.text()
 
-class VariableWindow(QWidget):
+class VariableWindow(QWidget): # combines multiple variable_lines into a vertical panel with a title and independent state
     def __init__(self, name, variable_widgets):
         super().__init__()
 
@@ -622,11 +624,11 @@ class VariableWindow(QWidget):
         p.setColor(self.backgroundRole(), color)
         self.banner.setPalette(p)
 
-class MainVariableWindow(QWidget):
-    def __init__(self, name, variables):
+class MainVariableWindow(QWidget): #like VariableWindow used to show crucial variables in a bigger font
+    def __init__(self, variables):
         super().__init__()
 
-        variable_names = ["Mission Time",
+        variable_names = ["Mission Time", #select variables to be shown
                           "Altitude",
                           "Descent Rate"]
 
@@ -670,17 +672,17 @@ class MainVariableWindow(QWidget):
         #self.setObjectName("Padded")
         #self.setStyleSheet("QWidget#Padded { padding: 100px; background-color: green;}")
         
-class TXButton(QPushButton):
-    def __init__(self, GUI, params): # params = [Text, Command]
+class TXButton(QPushButton): #widget defines the format of a standard button
+    def __init__(self, GUI, params): # params = [Text on button, Command]
         super().__init__(params[0])
         self.command = params[1]
         self.GUI = GUI
         self.setFixedHeight(90)
 
-        if self.command != "CLEAR GRAPH":
+        if self.command != "CLEAR GRAPH": #clear graph is the only button that doesnt transmit to the payload, all other buttons are linked to the xbee driver function
             self.clicked.connect(lambda : self.GUI.xbee_driver.send_msg(self.command))
 
-class ButtonWindow(QWidget):
+class ButtonWindow(QWidget): #widget combines all buttons passed to it into a layout
     def __init__(self, buttons):
         super().__init__()
 
@@ -694,24 +696,19 @@ class ButtonWindow(QWidget):
         self.setFixedWidth(225)
         self.setStyleSheet("QPushButton{font-size: 14pt;}")
 
-
-
-
-
-
 # Subclass QMainWindow to customize GCS main window
-class MainWindow(QMainWindow):
+class MainWindow(QMainWindow): #This MainWindow is whats displayed 
     def __init__(self):
         super().__init__()
 
-        self.xbee_driver = XbeeDriverSim(self) #XbeeDriver(self, XBEE_COM_PORT, 115200)
+        self.xbee_driver = XbeeDriver(self, XBEE_COM_PORT, 115200) #XbeeDriverSim(self)
         self.launch_packet = -1
         self.last_msg_time = time.time()
         self.launch_time = time.time()
 
         self.setWindowTitle("CANSAT Ground Station")
 
-        self.status_colors = {"LAUNCH_PAD":     QColor(226, 135,  67, 255),
+        self.status_colors = {"LAUNCH_PAD":     QColor(226, 135,  67, 255), #this was supposed to change the background colour as the payload state changed but it wasnt implemented
                               "ASCENT":         QColor(255, 255,   0, 255),
                               "APOGEE":         QColor(255,   0,   0, 255),
                               "DESCENT":        QColor(100, 100, 100, 255),
@@ -719,7 +716,7 @@ class MainWindow(QMainWindow):
                               "Error":          QColor(100,   0,   0, 255),
                               }
 
-        self.variable_names =  [["State", ""], #Unique ID Name, Short Name, Unit, "numerical_check"
+        self.variable_names =  [["State", ""], #Unique ID Name,  Unit, "numerical_check"
                                 ["Substate", ""],
                                 ["Mode", ""],
 
@@ -754,7 +751,7 @@ class MainWindow(QMainWindow):
                                 
                                 ["Packet Count", "", True],
                                 ["Received Count", "", True],
-                                ["CMD Echo", "", False],
+                                ["CMD Echo", "", False], # CMD echo is split over two lines otherwise long commands overflow the box, therefore CMD Echo is never written to with data, only CMD Echo Line is
                                 ["CMD Echo Line", "", False],
 
                                 ["Gimbal State", "", False],
@@ -774,7 +771,7 @@ class MainWindow(QMainWindow):
         self.variables["State"].setData("Not Connected")
         self.variables["Substate"].setData("Substate x")
         self.variables["Substate"].setStyleSheet("QLabel{font-size: 20pt;}")
-        self.variables["Mode"].setData("(X)")
+        self.variables["Mode"].setData("(X)") #(F) for flight and (S) for sim
         for i in self.variable_names[3:]:
             self.variables[i[0]] = variable_line(i[0], i[1], i[2])
             if "GPS" in i[0]:
@@ -782,8 +779,7 @@ class MainWindow(QMainWindow):
             if "CAM" in i[0]:
                 self.variables[i[0]].name.setText(i[0][5:].upper())
 
-        self.variables["Altitude 2"].name.setText("ALTITUDE")
-        #self.variables["Altitude 2"].name.setText("ALTITUDE")
+        self.variables["Altitude 2"].name.setText("ALTITUDE") #altitude is displayed twice so needs two entries with unique ids but the name is overwritten so it appears the same
         self.variables["Gimbal State"].name.setText("STATE")
         self.variables["Release Mechanism"].name.setText("MECHANISM")
 
@@ -809,7 +805,7 @@ class MainWindow(QMainWindow):
                                 ["Gimbal\nOn",          "CMD," + TEAM_ID + ",MEC,GIMBAL,ON\n"],
                                 ["Gimbal\nOff",         "CMD," + TEAM_ID + ",MEC,GIMBAL,OFF\n"],
                                 ["Clear\n Graph", "CLEAR GRAPH"]]
-        self.only_on_ground =   ["Arm", "CX OFF", "Set Time\nUTC", "Set Time\nGPS", "Calibrate\nAltitude", "Simulation\nEnable", "Simulation\nActivate"]
+        self.only_on_ground =   ["Arm", "CX OFF", "Set Time\nUTC", "Set Time\nGPS", "Calibrate\nAltitude", "Simulation\nEnable", "Simulation\nActivate"] #sets the list of buttons that are disabled during flight
         self.buttons = {}
         for i in self.button_names:
             self.buttons[i[0]] = TXButton(self, i)
@@ -818,19 +814,19 @@ class MainWindow(QMainWindow):
         self.buttons["Simulation\nDisable"].clicked.connect(self.xbee_driver.stop_simp)
         self.buttons["Clear\n Graph"].clicked.connect(self.clear_graph)
 
+        #this next bit defines which varibles belong in each window
+
         comms_data = [self.variables["Packet Count"],
                       self.variables["Received Count"],
                       self.variables["CMD Echo"],
                       self.variables["CMD Echo Line"]]
         self.comms_window = VariableWindow("Comms", comms_data)
         for i in comms_data:
-            i.unit.setFixedWidth(0)
+            i.unit.setFixedWidth(0) #comms is the only VariableWindow where no VariableLine's have a unit so the unit column is set to zero width
 
         baro_window = VariableWindow("Barometer",   [self.variables["Pressure"],
                                                      self.variables["Temperature"],
                                                      self.variables["Altitude 2"]])
-        #baro_window.setStatus("LOS")
-        #baro_window.state.setText("LOS 01:23")
 
         gps_window = VariableWindow("GPS", [self.variables["GPS Time"],
                                             self.variables["GPS Altitude"],
@@ -874,7 +870,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(5)
 
         #layout.addStretch()
-        layout.addWidget(MainVariableWindow("Main", self.variables))
+        layout.addWidget(MainVariableWindow(self.variables))
         #layout.addStretch()
 
         variable_panels = QWidget()
@@ -946,14 +942,10 @@ class MainWindow(QMainWindow):
         
 
         #self.setFixedSize(QSize(1500, 780))
-        #self.setMaximumSize(1000,8000)
         widget = QWidget()
         widget.setLayout(big_layout)
-        #left_panel.setStyleSheet("QWidget{background-color: blue;}")
         self.setAutoFillBackground(True)
         self.setStatus("LAUNCH_PAD")
-        #widget.setFixedWidth(300)
-        # Set the central widget of the Window.
         self.setCentralWidget(widget)
 
 
@@ -980,11 +972,11 @@ class MainWindow(QMainWindow):
 
     def update(self):
 
-        if self.start_time == -1: self.start_time = time.time()
+        if self.start_time == -1: self.start_time = time.time() #time this session started
 
-        # disable buttons while flying
-        #for i in self.only_on_ground:
-         #   self.buttons[i].setEnabled(self.variables["State"].getData() == "LAUNCH_PAD")
+        #disable buttons while flying
+        for i in self.only_on_ground:
+            self.buttons[i].setEnabled(self.variables["State"].getData() == "LAUNCH_PAD")
 
         if self.variables["CMD Echo Line"].getData() == self.xbee_driver.last_sent_command:
             self.variables["CMD Echo"].setStatus("OK")
@@ -999,8 +991,8 @@ class MainWindow(QMainWindow):
 
 
         # LOS detector
-        if self.variables["State"] != "LAUNCH_PAD" or True:
-            if time.time() - self.last_msg_time > 1.20:
+        if self.variables["State"] != "LAUNCH_PAD" or True: #remove True if sending packets less frequently to save battery before launch
+            if time.time() - self.last_msg_time > 1.20: #margin of 0.2s late
                 los_time = time.time() - self.last_msg_time
                 self.comms_window.setStatus("Error")
                 los_time_str = time.strftime("%M:%S", time.gmtime(los_time))
@@ -1070,7 +1062,7 @@ class MainWindow(QMainWindow):
 
 
 
-        if hasattr(self, 'data'):
+        if hasattr(self, 'data'): #update graphs
             t = [i for i in range(int(self.data[2])-self.launch_packet-len(self.variables["Altitude"].history), int(self.data[2])-self.launch_packet)]
             #self.graph_1.setData(t, self.variables["Altitude"], self.variables["Pressure"], None)
             self.graph_1.setDataSmart("Altitude", "Pressure", None)
@@ -1079,12 +1071,6 @@ class MainWindow(QMainWindow):
             #self.graph_2.setDataSmart("Autogyro Rate", "Descent Rate", "Temperature")
             self.graph_2.setDataSmart("Temperature", None, None)
             #self.graph_2.setDataSmart("ACCEL R", "ACCEL P", "ACCEL Y")
-
-
-
-
-        
-
 
 if __name__ == "__main__":
     print("### CANSAT Ground Station ###")
